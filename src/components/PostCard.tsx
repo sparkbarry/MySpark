@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { FeedPost, FeedSource } from '../types'
 import { fmtDate } from '../useFeed'
 
-const SRC_COLOR: Record<FeedSource, string> = { Instagram: '#B3122E', X: '#1E1726', Bilibili: '#1F5FD1' }
+const SRC_COLOR: Record<FeedSource, string> = { Instagram: '#B3122E', X: '#1E1726' }
 
 export function PostCard({ post }: { post: FeedPost }) {
   const images = post.images?.length ? post.images : post.image ? [{ url: post.image, fromQuote: post.imageFromQuote }] : []

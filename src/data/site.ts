@@ -32,6 +32,7 @@ export const profile: Profile = {
     { label: 'Twitter', url: 'https://x.com/spark_barry' },
     { label: 'GitHub', url: 'https://github.com/KirisameVanilla' },
     { label: 'Bilibili', url: 'https://space.bilibili.com/5198313' },
+    { label: 'YouTube', url: 'https://www.youtube.com/@spark_barry' },
   ],
 }
 

@@ -1,32 +1,39 @@
 import { useEffect, useState } from 'react'
-import type { FeedFile } from './types'
+import type { FeedFile, VideoFile } from './types'
 
-let cache: Promise<FeedFile> | null = null
+const cache = new Map<string, Promise<unknown>>()
 
-/** Loads feed.json (written by scripts/sync-feed.ts) once and shares it between pages. */
-export function useFeed() {
-  const [data, setData] = useState<FeedFile | null>(null)
+/** Loads a JSON file written by scripts/sync-feed.ts once and shares it between pages. */
+function useSynced<T>(url: string) {
+  const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    cache ??= fetch('/feed/feed.json', { cache: 'no-cache' }).then((r) =>
-      r.ok ? (r.json() as Promise<FeedFile>) : Promise.reject(new Error(String(r.status))),
-    )
+    let request = cache.get(url)
+    if (!request) {
+      request = fetch(url, { cache: 'no-cache' }).then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      cache.set(url, request)
+    }
     let alive = true
-    cache.then(
-      (d) => alive && setData(d),
+    request.then(
+      (d) => alive && setData(d as T),
       () => {
-        cache = null
+        cache.delete(url)
         if (alive) setError(true)
       },
     )
     return () => {
       alive = false
     }
-  }, [])
+  }, [url])
 
   return { data, error }
 }
+
+export const useFeed = () => useSynced<FeedFile>('/feed/feed.json')
+export const useVideos = () => useSynced<VideoFile>('/videos/videos.json')
 
 export const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })

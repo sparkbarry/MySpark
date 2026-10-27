@@ -1,6 +1,7 @@
 /**
  * Pulls your latest posts from social platforms into public/feed/feed.json,
  * and copies their images into public/feed/images/ (Instagram image URLs expire).
+ * Bilibili and YouTube uploads go to public/videos/videos.json the same way.
  *
  * Run locally:   IG_ACCESS_TOKEN=... npm run sync-feed
  * In CI:         .github/workflows/sync-feed.yml runs it on a schedule.
@@ -12,7 +13,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fetchX } from './x-feed.ts'
-import type { FeedFile, FeedPost, FeedSource } from '../src/types.ts'
+import { fetchBilibili, fetchYouTube } from './video-feed.ts'
+import type { FeedFile, FeedPost, FeedSource, Video, VideoFile, VideoSource } from '../src/types.ts'
 
 // Local runs read secrets from .env.local (git-ignored); CI passes them as env vars.
 if (existsSync('.env.local')) process.loadEnvFile('.env.local')
@@ -21,6 +23,11 @@ const OUT_DIR = path.resolve('public/feed')
 const IMG_DIR = path.join(OUT_DIR, 'images')
 const FEED_PATH = path.join(OUT_DIR, 'feed.json')
 const MAX_POSTS = 60
+
+const VIDEO_DIR = path.resolve('public/videos')
+const THUMB_DIR = path.join(VIDEO_DIR, 'thumbs')
+const VIDEOS_PATH = path.join(VIDEO_DIR, 'videos.json')
+const MAX_VIDEOS = 60
 
 // ---------- Instagram (Instagram API with Instagram Login) ----------
 // Needs a Creator/Business account and a long-lived user token.
@@ -94,15 +101,22 @@ async function fetchInstagram(): Promise<FeedPost[]> {
 const sources: Partial<Record<FeedSource, () => Promise<FeedPost[]>>> = {
   Instagram: fetchInstagram,
   X: () => fetchX(saveImage),
-  // Bilibili has no official API for this and its web API blocks scripts, so
-  // Bilibili posts are listed by hand in content/manual-posts.json instead.
+}
+
+// Videos have their own page, so they are kept out of the posts feed.
+const saveThumb = (name: string, url: string) => saveFile(THUMB_DIR, '/videos/thumbs', name, url)
+const videoSources: Record<VideoSource, () => Promise<Video[]>> = {
+  Bilibili: () => fetchBilibili(saveThumb),
+  YouTube: () => fetchYouTube(saveThumb),
 }
 
 // ---------- helpers ----------
 
-async function saveImage(name: string, url: string): Promise<string | undefined> {
-  const file = path.join(IMG_DIR, `${name}.jpg`)
-  const publicPath = `/feed/images/${name}.jpg`
+const saveImage = (name: string, url: string) => saveFile(IMG_DIR, '/feed/images', name, url)
+
+async function saveFile(dir: string, publicDir: string, name: string, url: string): Promise<string | undefined> {
+  const file = path.join(dir, `${name}.jpg`)
+  const publicPath = `${publicDir}/${name}.jpg`
   if (existsSync(file)) return publicPath // already downloaded on an earlier run
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
@@ -115,50 +129,44 @@ async function saveImage(name: string, url: string): Promise<string | undefined>
   }
 }
 
-const MANUAL_PATH = path.resolve('content/manual-posts.json')
-
-async function readManual(): Promise<FeedPost[]> {
-  if (!existsSync(MANUAL_PATH)) return []
-  const posts = JSON.parse(await readFile(MANUAL_PATH, 'utf8')) as Omit<FeedPost, 'id'>[]
-  return posts.map((p) => ({ ...p, id: `manual-${p.url}` }))
-}
-
-async function readPrevious(): Promise<FeedFile> {
+async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
-    return JSON.parse(await readFile(FEED_PATH, 'utf8')) as FeedFile
+    return JSON.parse(await readFile(file, 'utf8')) as T
   } catch {
-    return { updatedAt: null, posts: [] }
+    return fallback
   }
 }
 
-async function main() {
-  await mkdir(IMG_DIR, { recursive: true })
-  const prev = await readPrevious()
-  const merged: FeedPost[] = []
+/** Runs every fetcher; a failed one contributes its previously saved items instead. */
+async function collect<S extends string, T extends { source: S; date: string }>(
+  fetchers: Partial<Record<S, () => Promise<T[]>>>,
+  previous: T[],
+): Promise<{ items: T[]; anyOk: boolean }> {
+  const items: T[] = []
   let anyOk = false
-
-  for (const [source, fetcher] of Object.entries(sources) as [FeedSource, () => Promise<FeedPost[]>][]) {
+  for (const [source, fetcher] of Object.entries(fetchers) as [S, () => Promise<T[]>][]) {
     try {
-      const posts = await fetcher()
-      console.log(`[${source}] ${posts.length} posts`)
-      merged.push(...posts)
+      const got = await fetcher()
+      console.log(`[${source}] ${got.length} items`)
+      items.push(...got)
       anyOk = true
     } catch (e) {
-      console.error(`[${source}] failed, keeping previous posts${source === 'X' ? '' : `: ${(e as Error).message}`}`)
-      if (process.env.GITHUB_ACTIONS) console.warn(`::warning::${source} sync failed; previous posts retained. Check credentials and service availability.`)
-      merged.push(...prev.posts.filter((p) => p.source === source))
+      console.error(`[${source}] failed, keeping previous items${source === 'X' ? '' : `: ${(e as Error).message}`}`)
+      if (process.env.GITHUB_ACTIONS) console.warn(`::warning::${source} sync failed; previous items retained. Check credentials and service availability.`)
+      items.push(...previous.filter((p) => p.source === source))
     }
   }
+  items.sort((a, b) => b.date.localeCompare(a.date))
+  return { items, anyOk }
+}
 
-  // Hand-maintained posts (e.g. Bilibili videos) from content/manual-posts.json.
-  merged.push(...(await readManual()))
+async function syncPosts(): Promise<boolean> {
+  await mkdir(IMG_DIR, { recursive: true })
+  const prev = await readJson<FeedFile>(FEED_PATH, { updatedAt: null, posts: [] })
+  const { items, anyOk } = await collect(sources, prev.posts)
 
   // The repo ships with placeholder posts; drop them once real data arrives.
-  if (anyOk) {
-    for (let i = merged.length - 1; i >= 0; i--) if (merged[i].id.startsWith('sample-')) merged.splice(i, 1)
-  }
-
-  merged.sort((a, b) => b.date.localeCompare(a.date))
+  const merged = anyOk ? items.filter((p) => !p.id.startsWith('sample-')) : items
   const posts = merged.slice(0, MAX_POSTS)
   const changed = JSON.stringify(posts) !== JSON.stringify(prev.posts)
   const out: FeedFile = {
@@ -167,7 +175,28 @@ async function main() {
   }
   await writeFile(FEED_PATH, JSON.stringify(out, null, 2) + '\n')
   console.log(`wrote ${out.posts.length} posts to ${path.relative(process.cwd(), FEED_PATH)}`)
-  if (!anyOk) process.exitCode = 1
+  return anyOk
+}
+
+async function syncVideos(): Promise<boolean> {
+  await mkdir(THUMB_DIR, { recursive: true })
+  const prev = await readJson<VideoFile>(VIDEOS_PATH, { updatedAt: null, videos: [] })
+  const { items, anyOk } = await collect(videoSources, prev.videos)
+  const videos = items.slice(0, MAX_VIDEOS)
+  const changed = JSON.stringify(videos) !== JSON.stringify(prev.videos)
+  const out: VideoFile = {
+    updatedAt: anyOk && changed ? new Date().toISOString() : prev.updatedAt,
+    videos,
+  }
+  await writeFile(VIDEOS_PATH, JSON.stringify(out, null, 2) + '\n')
+  console.log(`wrote ${out.videos.length} videos to ${path.relative(process.cwd(), VIDEOS_PATH)}`)
+  return anyOk
+}
+
+async function main() {
+  const postsOk = await syncPosts()
+  const videosOk = await syncVideos()
+  if (!postsOk && !videosOk) process.exitCode = 1
 }
 
 main()

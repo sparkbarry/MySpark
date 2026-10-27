@@ -11,6 +11,7 @@ const NOTE_KIND: Record<TabId, NoteKind> = {
   resume: 'don',
   projects: 'ka',
   feed: 'don',
+  videos: 'ka',
 }
 
 // OurTaikoPlay's play screen: festival strip with the "song title", then the

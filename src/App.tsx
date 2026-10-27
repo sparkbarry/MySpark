@@ -6,10 +6,11 @@ import { Profile } from './sections/Profile'
 import { Resume } from './sections/Resume'
 import { Projects } from './sections/Projects'
 import { Feed } from './sections/Feed'
+import { Videos } from './sections/Videos'
 import { fullName, profile } from './data/site'
 import { TABS, useHashTab } from './useHashTab'
 
-const sections = { home: Home, profile: Profile, resume: Resume, projects: Projects, feed: Feed }
+const sections = { home: Home, profile: Profile, resume: Resume, projects: Projects, feed: Feed, videos: Videos }
 
 export default function App() {
   const tab = useHashTab()

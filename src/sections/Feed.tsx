@@ -10,7 +10,6 @@ const filters: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'Instagram', label: 'Instagram' },
   { id: 'X', label: 'X' },
-  { id: 'Bilibili', label: 'Bilibili' },
 ]
 const PAGE = 12
 

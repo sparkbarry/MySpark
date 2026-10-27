@@ -1,7 +1,7 @@
 # MySpark
 
-Vite + React + TypeScript. Manga-panel look, tabbed sections (Home / Profile / Résumé / Projects / Feed),
-and a social feed synced from Instagram on a schedule.
+Vite + React + TypeScript. Manga-panel look, tabbed sections (Home / Feed / Videos / Profile / Résumé / Projects),
+a social feed synced from Instagram and X, and a video list synced from Bilibili and YouTube on a schedule.
 
 ```bash
 npm install
@@ -43,26 +43,18 @@ The site only reads that JSON — no tokens ever reach the browser.
 `.github/workflows/sync-feed.yml` then runs every 6 hours (or on demand from the Actions tab),
 refreshes the token, and commits the new `feed.json` — your host (Vercel / Cloudflare Pages) redeploys on that commit.
 
-### Bilibili and other platforms
+### Videos (Bilibili and YouTube)
 
-Bilibili has no official API for listing a user's uploads, and its web API blocks scripts,
-so those posts are listed by hand in `content/manual-posts.json`:
+The **Videos** tab reads `public/videos/videos.json`, written by the same sync script
+(`scripts/video-feed.ts`) with thumbnails saved into `public/videos/thumbs/`. Neither source needs a key:
 
-```json
-[
-  {
-    "source": "Bilibili",
-    "date": "2026-10-01T12:00:00+08:00",
-    "text": "Video title",
-    "url": "https://www.bilibili.com/video/BV...",
-    "image": "/feed/manual/cover.jpg"
-  }
-]
-```
+- **Bilibili** — the public `x/series/recArchivesByKeywords` endpoint, which lists a user's uploads
+  without the WBI signing that the space page's own API needs. Set the account in `BILIBILI_MID`.
+- **YouTube** — the channel's public Atom feed (`/feeds/videos.xml?channel_id=...`), which holds the
+  15 latest uploads. Set the channel in `YOUTUBE_CHANNEL_ID`.
 
-`image` is optional (put the file in `public/feed/manual/`). Pushing a change to this file
-runs the sync workflow, which merges it into `feed.json`.
-Platforms with a real API can get a fetcher in `scripts/sync-feed.ts` (see the `sources` map).
+Bilibili sometimes answers with HTTP 412 (risk control) for server IPs. As with the other sources, a
+failed run keeps the previously saved videos and the next scheduled run tries again.
 
 ## Deploy
 

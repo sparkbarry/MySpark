@@ -1,5 +1,6 @@
 name: Sync social feed
-# Pulls Instagram and original X posts into public/feed (see README).
+# Pulls Instagram and original X posts into public/feed, and Bilibili and
+# YouTube uploads into public/videos (see README).
 
 on:
   schedule:
@@ -7,7 +8,7 @@ on:
   workflow_dispatch: {}
   push:
     branches: [main]
-    paths: ['content/manual-posts.json', 'scripts/**', '.github/workflows/sync-feed.yml', 'package.json', 'package-lock.json']
+    paths: ['scripts/**', '.github/workflows/sync-feed.yml', 'package.json', 'package-lock.json']
 
 permissions:
   contents: write
@@ -50,9 +51,9 @@ jobs:
 
       - name: Commit updated feed
         run: |
-          git add public/feed
+          git add public/feed public/videos
           if git diff --cached --quiet; then
-            echo "No feed changes."
+            echo "No feed or video changes."
             exit 0
           fi
           git config user.name "feed-bot"

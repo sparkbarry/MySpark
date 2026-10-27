@@ -1,4 +1,4 @@
-export type TabId = 'home' | 'profile' | 'resume' | 'projects' | 'feed'
+export type TabId = 'home' | 'profile' | 'resume' | 'projects' | 'feed' | 'videos'
 
 export interface Profile {
   handle: string
@@ -41,7 +41,7 @@ export interface Project {
   repoUrl?: string
 }
 
-export type FeedSource = 'Instagram' | 'X' | 'Bilibili'
+export type FeedSource = 'Instagram' | 'X'
 
 export interface FeedPost {
   id: string
@@ -57,4 +57,22 @@ export interface FeedPost {
 export interface FeedFile {
   updatedAt: string | null
   posts: FeedPost[]
+}
+
+export type VideoSource = 'Bilibili' | 'YouTube'
+
+export interface Video {
+  id: string
+  source: VideoSource
+  date: string // ISO 8601
+  title: string
+  url: string
+  thumbnail?: string
+  /** Length in seconds, when the platform reports it. */
+  duration?: number
+}
+
+export interface VideoFile {
+  updatedAt: string | null
+  videos: Video[]
 }
